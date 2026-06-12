@@ -2,38 +2,48 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
     public function login(Request $request): JsonResponse
     {
         $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+            'email'    => 'required|email',
+            'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $request->email)->first();
-
-        if (! $user || ! Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
-            ]);
+        if (! $token = auth('api')->attempt($request->only('email', 'password'))) {
+            return response()->json(['message' => 'Credenziali non valide'], 401);
         }
 
-        $token = $user->createToken('api-token')->plainTextToken;
-
-        return response()->json(['token' => $token]);
+        return $this->respondWithToken($token);
     }
 
-    public function logout(Request $request): JsonResponse
+    public function me(): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        return response()->json(auth('api')->user());
+    }
 
-        return response()->json(['message' => 'Logged out successfully.']);
+    public function logout(): JsonResponse
+    {
+        auth('api')->logout();
+
+        return response()->json(['message' => 'Logout effettuato con successo']);
+    }
+
+    public function refresh(): JsonResponse
+    {
+        return $this->respondWithToken(auth('api')->refresh());
+    }
+
+    protected function respondWithToken(string $token): JsonResponse
+    {
+        return response()->json([
+            'access_token' => $token,
+            'token_type'   => 'bearer',
+            'expires_in'   => auth('api')->factory()->getTTL() * 60,
+        ]);
     }
 }
